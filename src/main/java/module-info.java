@@ -1,8 +1,9 @@
 module se233.project1 {
     requires javafx.controls;
-    requires javafx.fxml;
+    requires java.desktop;
 
-
-    opens se233.project1 to javafx.fxml;
     exports se233.project1;
+    exports se233.project1.controller;
+    exports se233.project1.model;
+    exports se233.project1.view;
 }
