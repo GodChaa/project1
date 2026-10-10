@@ -3,26 +3,17 @@ package se233.project1.view;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
-import javafx.scene.layout.Background;
-import javafx.scene.layout.BackgroundFill;
-import javafx.scene.layout.BackgroundImage;
-import javafx.scene.layout.BackgroundPosition;
-import javafx.scene.layout.BackgroundRepeat;
-import javafx.scene.layout.BackgroundSize;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import se233.project1.controller.EditorController;
 import se233.project1.controller.SettingsController;
 import se233.project1.model.ConversionSettings;
+import se233.project1.model.ImageProject;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,19 +21,77 @@ import java.util.List;
 public class EditorView extends BorderPane {
     private static final String BUTTON_STYLE = "-fx-background-color: #f3f4f6; " + "-fx-border-color: #cfd4da; -fx-border-radius: 5; -fx-background-radius: 5;";
     private final List<Label> previewPlaceholders = new ArrayList<>();
+    private final EditorController editorController;
+    private StackPane originalCanvas;
     private Button btnNext;
 
     public EditorView(EditorController editorController, SettingsController settingsController) {
+        this.editorController = editorController;
         setTop(createToolbar(editorController));
         setCenter(createPreviewArea());
         setRight(createSettingsPanel(settingsController));
         setStyle("-fx-background-color: #ffffff;");
+
+        // เปิดใช้งานระบบ Drag-and-Drop
+        setupDragAndDrop(editorController);
     }
 
-    // Top panel: Must contain only the following three controls:
-    //• Zoom In
-    //• Zoom Out
-    //• Zoom to F
+    private void setupDragAndDrop(EditorController controller) {
+        this.setOnDragOver(event -> {
+            if (event.getDragboard().hasFiles()) {
+                event.acceptTransferModes(javafx.scene.input.TransferMode.COPY);
+            }
+            event.consume();
+        });
+
+        this.setOnDragDropped(event -> {
+            javafx.scene.input.Dragboard db = event.getDragboard();
+            boolean success = false;
+            if (db.hasFiles()) {
+                List<File> files = db.getFiles();
+                List<ImageProject> projects = new ArrayList<>();
+
+                for (File file : files) {
+                    String name = file.getName().toLowerCase();
+                    if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")) {
+                        projects.add(new ImageProject(file.getAbsolutePath()));
+                    } else if (name.endsWith(".zip")) {
+                        // TODO: รองรับการแตกไฟล์ .zip ตามข้อกำหนด
+                    }
+                }
+
+                if (!projects.isEmpty()) {
+                    // ส่งรายการโปรเจกต์ให้ Controller
+                    controller.setProjects(projects);
+
+                    // แสดงภาพแรกบนพรีวิวฝั่งซ้าย (Original Image)
+                    displayOriginalImage(projects.get(0).getFilePath());
+                    success = true;
+                }
+            }
+            event.setDropCompleted(success);
+            event.consume();
+        });
+    }
+
+    public void displayOriginalImage(String imagePath) {
+        if (originalCanvas != null) {
+            try {
+                File file = new File(imagePath);
+                Image image = new Image(file.toURI().toString());
+                ImageView imageView = new ImageView(image);
+                imageView.setPreserveRatio(true);
+                imageView.fitWidthProperty().bind(originalCanvas.widthProperty().subtract(20));
+                imageView.fitHeightProperty().bind(originalCanvas.heightProperty().subtract(20));
+
+                originalCanvas.getChildren().setAll(imageView);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // Top panel: Zoom controls only
     private HBox createToolbar(EditorController controller) {
         Button zoomIn = toolbarButton("＋", "Zoom In");
         zoomIn.setOnAction(event -> applyZoom(controller.zoomIn()));
@@ -53,7 +102,6 @@ public class EditorView extends BorderPane {
         Button zoomToFit = toolbarButton("⛶", "Zoom to Fit");
         zoomToFit.setOnAction(event -> applyZoom(controller.zoomToFit()));
 
-        // บรรจุเฉพาะ 3 ปุ่มควบคุมการซูมเท่านั้นตามข้อกำหนด
         HBox toolbar = new HBox(6, zoomIn, zoomOut, zoomToFit);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(7, 12, 7, 12));
@@ -69,8 +117,7 @@ public class EditorView extends BorderPane {
         return button;
     }
 
-    // Center preview: Displays the Original Image and the Vectorized Result side-by-side
-    //ใช้ createPreviewArea, createPreview
+    // Center preview: Side-by-side Original and Vectorized result
     private GridPane createPreviewArea() {
         GridPane previews = new GridPane();
         previews.setHgap(2);
@@ -85,10 +132,8 @@ public class EditorView extends BorderPane {
         right.setHgrow(Priority.ALWAYS);
         previews.getColumnConstraints().addAll(left, right);
 
-        // สร้างพื้นที่ฝั่งซ้ายสำหรับภาพต้นฉบับ
-        BorderPane original = createPreview("Original Image", "Drop an image to preview");
-        // สร้างพื้นที่ฝั่งขวาสำหรับภาพผลลัพธ์เวกเตอร์
-        BorderPane vector = createPreview("Vectorized Result", "Vector preview");
+        BorderPane original = createOriginalPreview("Original Image", "Drop an image to preview");
+        BorderPane vector = createVectorPreview("Vectorized Result", "Vector preview");
 
         previews.add(original, 0, 0);
         previews.add(vector, 1, 0);
@@ -101,7 +146,7 @@ public class EditorView extends BorderPane {
         return previews;
     }
 
-    private BorderPane createPreview(String title, String placeholderText) {
+    private BorderPane createOriginalPreview(String title, String placeholderText) {
         Label heading = new Label(title);
         heading.setMaxWidth(Double.MAX_VALUE);
         heading.setAlignment(Pos.CENTER);
@@ -115,7 +160,34 @@ public class EditorView extends BorderPane {
                 + "-fx-background-radius: 7;");
         previewPlaceholders.add(placeholder);
 
-        // ใช้ StackPane วางตัวหนังสือ/รูปภาพทับบนพื้นหลังลายตารางหมากรุก (Checkerboard)
+        originalCanvas = new StackPane(placeholder);
+        originalCanvas.setBackground(checkerboardBackground());
+
+        Label footer = new Label("900 × 900 px");
+        footer.setMaxWidth(Double.MAX_VALUE);
+        footer.setAlignment(Pos.CENTER);
+        footer.setPadding(new Insets(7));
+        footer.setStyle("-fx-background-color: rgba(255,255,255,0.9); -fx-text-fill: #555b63;");
+
+        BorderPane preview = new BorderPane(originalCanvas, heading, null, footer, null);
+        preview.setMinWidth(0);
+        return preview;
+    }
+
+    private BorderPane createVectorPreview(String title, String placeholderText) {
+        Label heading = new Label(title);
+        heading.setMaxWidth(Double.MAX_VALUE);
+        heading.setAlignment(Pos.CENTER);
+        heading.setPadding(new Insets(8));
+        heading.setStyle("-fx-font-size: 15px; -fx-background-color: rgba(255,255,255,0.88); "
+                + "-fx-border-color: #d4d8dd; -fx-border-width: 0 0 1 0;");
+
+        Label placeholder = new Label(placeholderText);
+        placeholder.setStyle("-fx-font-size: 16px; -fx-text-fill: #8a9098; "
+                + "-fx-background-color: rgba(255,255,255,0.78); -fx-padding: 12 18; "
+                + "-fx-background-radius: 7;");
+        previewPlaceholders.add(placeholder);
+
         StackPane canvas = new StackPane(placeholder);
         canvas.setBackground(checkerboardBackground());
 
@@ -133,17 +205,23 @@ public class EditorView extends BorderPane {
     private VBox createSettingsPanel(SettingsController controller) {
         ConversionSettings settings = controller.settings();
 
-        // ปรับปุ่ม Export ให้เป็น Download Result ตามต้นฉบับ
         Button export = new Button("↓  Download Result");
         export.setMaxWidth(Double.MAX_VALUE);
         export.setPrefHeight(40);
         export.setStyle("-fx-background-color: #2b73b7; -fx-text-fill: white; "
                 + "-fx-font-size: 14px; -fx-font-weight: bold; -fx-background-radius: 4;");
 
+        // เชื่อมโยงปุ่ม Export All กับ EditorController เพื่อเปิด DirectoryChooser
+        export.setOnAction(event -> {
+            javafx.stage.Window window = export.getScene().getWindow();
+            if (editorController != null) {
+                editorController.handleExportAll(window);
+            }
+        });
+
         Label heading = new Label("Improve result");
         heading.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #222;");
 
-        // Detail level พร้อมลิงก์ Instructions
         HBox detailHeader = new HBox(5, sectionLabel("Detail level"), createInstructionLink());
         detailHeader.setAlignment(Pos.CENTER_LEFT);
 
@@ -162,7 +240,6 @@ public class EditorView extends BorderPane {
             case HIGH -> high.setSelected(true);
         }
 
-        // Colors พร้อมลิงก์ Instructions
         HBox colorHeader = new HBox(5, sectionLabel("Colors"), createInstructionLink());
         colorHeader.setAlignment(Pos.CENTER_LEFT);
 
@@ -189,7 +266,6 @@ public class EditorView extends BorderPane {
         colorCount.valueProperty().addListener((value, oldValue, newValue) ->
                 controller.setCustomColorCount(newValue));
 
-        // Advanced section
         Label advancedHeading = new Label("Advanced");
         advancedHeading.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #444;");
 
@@ -211,7 +287,6 @@ public class EditorView extends BorderPane {
         handPick.setStyle(BUTTON_STYLE);
         handPick.setDisable(true);
 
-        // Navigation (Back / Next)
         Button btnBack = new Button("← Back");
         btnBack.setStyle(BUTTON_STYLE);
         btnNext = new Button("Next →");
@@ -245,6 +320,7 @@ public class EditorView extends BorderPane {
         link.setStyle("-fx-font-size: 11px; -fx-text-fill: #1a73e8; -fx-padding: 0;");
         return link;
     }
+
     private void applyZoom(double zoom) {
         for (Label placeholder : previewPlaceholders) {
             placeholder.setScaleX(zoom);
@@ -260,24 +336,7 @@ public class EditorView extends BorderPane {
     }
 
     private HBox segmentedRow(ButtonBase... buttons) {
-        HBox row = new HBox(0); // ให้ปุ่มชิดติดกันเหมือน Segmented Control
-        for (int i = 0; i < buttons.length; i++) {
-            ButtonBase button = buttons[i];
-            button.setMaxWidth(Double.MAX_VALUE);
-            HBox.setHgrow(button, Priority.ALWAYS);
-            row.getChildren().add(button);
-        }
-        return row;
-    }
-    private ToggleButton optionButton(String text, ToggleGroup group) {
-        ToggleButton button = new ToggleButton(text);
-        button.setToggleGroup(group);
-        button.setStyle(BUTTON_STYLE);
-        return button;
-    }
-
-    private HBox equalButtonRow(ButtonBase... buttons) {
-        HBox row = new HBox(5);
+        HBox row = new HBox(0);
         for (ButtonBase button : buttons) {
             button.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(button, Priority.ALWAYS);
