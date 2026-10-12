@@ -10,6 +10,13 @@ public class ConversionSettings {
     private int customColorCount = 2;
     private boolean removeBackground;
 
+    public void reset() {
+        detailLevel = DetailLevel.MEDIUM;
+        colorMode = ColorMode.CUSTOM;
+        customColorCount = 2;
+        removeBackground = false;
+    }
+
     public DetailLevel getDetailLevel() {
         return detailLevel;
     }
@@ -43,5 +50,19 @@ public class ConversionSettings {
 
     public void setRemoveBackground(boolean removeBackground) {
         this.removeBackground = removeBackground;
+    }
+
+    public ConversionSettings copy() {
+        ConversionSettings copy = new ConversionSettings();
+        copy.detailLevel = detailLevel;
+        copy.colorMode = colorMode;
+        copy.customColorCount = customColorCount;
+        copy.removeBackground = removeBackground;
+        return copy;
+    }
+
+    public String signature() {
+        return detailLevel + "-" + colorMode + "-"
+                + (colorMode == ColorMode.CUSTOM ? customColorCount : "all") + "-" + removeBackground;
     }
 }

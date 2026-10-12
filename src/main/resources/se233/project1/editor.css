@@ -1,0 +1,292 @@
+.editor-root {
+    -fx-font-family: "Arial";
+    -fx-background-color: #ededed;
+}
+
+.top-toolbar {
+    -fx-pref-height: 32px;
+    -fx-background-color: linear-gradient(to bottom, #fafafa 0%, #eeeeee 100%);
+    -fx-border-color: #bcbec1;
+    -fx-border-width: 0 0 1px 0;
+}
+
+.toolbar-title {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #4388c7;
+}
+
+.tool-button,
+.navigation-button,
+.bundle-button {
+    -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #f4f4f4 46%, #dedede 100%);
+    -fx-border-color: #afb2b5;
+    -fx-border-radius: 2px;
+    -fx-background-radius: 2px;
+    -fx-effect: innershadow(gaussian, rgba(255, 255, 255, 0.70), 1, 0, 0, 1);
+}
+
+.tool-button {
+    -fx-pref-width: 31px;
+    -fx-pref-height: 25px;
+    -fx-min-width: 31px;
+    -fx-min-height: 25px;
+    -fx-padding: 0;
+}
+
+.button-icon-stroke {
+    -fx-stroke: #3d4145;
+    -fx-stroke-width: 1.6px;
+    -fx-stroke-line-cap: round;
+}
+
+.tool-button:hover,
+.navigation-button:hover,
+.segment-button:hover,
+.background-option:hover {
+    -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #eef4f9 45%, #d7e2eb 100%);
+    -fx-border-color: #8fa8bc;
+}
+
+.tool-button:pressed,
+.navigation-button:pressed,
+.segment-button:pressed,
+.background-option:pressed {
+    -fx-background-color: linear-gradient(to bottom, #d4d4d4 0%, #eeeeee 100%);
+    -fx-translate-y: 1px;
+}
+
+.comparison-grid {
+    -fx-background-color: #bfc1c4;
+}
+
+.preview-panel,
+.preview-scroll,
+.preview-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.preview-scroll {
+    -fx-padding: 0;
+    -fx-border-width: 0;
+}
+
+.preview-title {
+    -fx-padding: 3px;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #222222;
+    -fx-background-color: rgba(255, 255, 255, 0.94);
+}
+
+.preview-footer {
+    -fx-padding: 4px;
+    -fx-font-size: 12px;
+    -fx-text-fill: #333333;
+    -fx-background-color: rgba(255, 255, 255, 0.95);
+}
+
+.preview-placeholder {
+    -fx-padding: 10px 14px;
+    -fx-background-color: rgba(255, 255, 255, 0.90);
+    -fx-background-radius: 3px;
+    -fx-text-fill: #686868;
+}
+
+.settings-panel {
+    -fx-pref-width: 192px;
+    -fx-min-width: 185px;
+    -fx-background-color: #f7f7f7;
+    -fx-border-color: #c4c6c9;
+    -fx-border-width: 0 0 0 1px;
+}
+
+.download-button {
+    -fx-pref-height: 38px;
+    -fx-padding: 7px 12px;
+    -fx-background-color: linear-gradient(to bottom, #4f9bd4 0%, #347fbd 48%, #2e70ae 100%);
+    -fx-border-color: #28679f;
+    -fx-border-radius: 4px;
+    -fx-background-radius: 4px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.18), 2, 0, 0, 1);
+}
+
+.download-button:hover {
+    -fx-background-color: linear-gradient(to bottom, #62a9dc 0%, #3c8aca 48%, #347ab8 100%);
+}
+
+.download-button:pressed {
+    -fx-background-color: linear-gradient(to bottom, #286aa4 0%, #3985c1 100%);
+    -fx-translate-y: 1px;
+}
+
+.download-icon {
+    -fx-fill: white;
+}
+
+.download-label {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.improve-heading {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #303030;
+}
+
+.section-label {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #414141;
+}
+
+.segment-button {
+    -fx-min-height: 26px;
+    -fx-pref-height: 26px;
+    -fx-padding: 3px 4px;
+    -fx-font-size: 11px;
+    -fx-text-fill: #3b3b3b;
+    -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #f3f3f3 48%, #dfdfdf 100%);
+    -fx-border-color: #b7b9bc;
+    -fx-border-radius: 2px;
+    -fx-background-radius: 2px;
+}
+
+.segment-button:selected {
+    -fx-font-weight: bold;
+    -fx-background-color: linear-gradient(to bottom, #cfd2d5 0%, #e2e3e4 100%);
+    -fx-border-color: #91969b;
+    -fx-effect: innershadow(gaussian, rgba(0, 0, 0, 0.15), 2, 0, 0, 1);
+}
+
+.segment-text {
+    -fx-font-size: 11px;
+    -fx-text-fill: #3b3b3b;
+}
+
+.navigation-label,
+.background-label {
+    -fx-font-size: 11px;
+    -fx-text-fill: #3b3b3b;
+}
+
+.color-swatch {
+    -fx-min-width: 14px;
+    -fx-pref-width: 14px;
+    -fx-min-height: 14px;
+    -fx-pref-height: 14px;
+    -fx-padding: 1px;
+    -fx-background-color: white;
+    -fx-border-color: #929292;
+    -fx-border-width: 1px;
+}
+
+.color-count-label,
+.work-status {
+    -fx-font-size: 11px;
+    -fx-text-fill: #555555;
+}
+
+.color-counter {
+    -fx-min-width: 55px;
+    -fx-pref-width: 55px;
+    -fx-min-height: 28px;
+    -fx-pref-height: 28px;
+    -fx-background-color: white;
+    -fx-border-color: #b7b9bc;
+    -fx-border-radius: 2px;
+    -fx-background-radius: 2px;
+}
+
+.color-counter-value {
+    -fx-min-width: 34px;
+    -fx-pref-width: 34px;
+    -fx-padding: 0 0 0 8px;
+    -fx-font-size: 12px;
+    -fx-text-fill: #3b3b3b;
+}
+
+.counter-arrows {
+    -fx-min-width: 20px;
+    -fx-pref-width: 20px;
+}
+
+.counter-button {
+    -fx-min-width: 20px;
+    -fx-pref-width: 20px;
+    -fx-min-height: 13px;
+    -fx-pref-height: 13px;
+    -fx-padding: 0;
+    -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #dddddd 100%);
+    -fx-border-color: #b7b9bc;
+    -fx-border-width: 0 0 1px 1px;
+    -fx-background-radius: 0;
+}
+
+.counter-button:hover {
+    -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #d7e2eb 100%);
+}
+
+.counter-button:pressed {
+    -fx-background-color: #d2d2d2;
+}
+
+.counter-button:disabled {
+    -fx-opacity: 0.45;
+}
+
+.counter-triangle {
+    -fx-fill: #55595d;
+}
+
+.background-option {
+    -fx-pref-height: 27px;
+    -fx-padding: 4px 7px;
+    -fx-font-size: 11px;
+    -fx-text-fill: #3b3b3b;
+    -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #f3f3f3 48%, #dfdfdf 100%);
+    -fx-border-color: #b7b9bc;
+    -fx-border-radius: 2px;
+    -fx-background-radius: 2px;
+}
+
+.background-box-shape {
+    -fx-fill: white;
+    -fx-stroke: #8e9397;
+    -fx-stroke-width: 1px;
+}
+
+.background-check-mark {
+    -fx-opacity: 0;
+    -fx-stroke: #347fbd;
+    -fx-stroke-width: 2px;
+}
+
+.background-option:selected .background-check-mark {
+    -fx-opacity: 1;
+}
+
+.navigation-button {
+    -fx-min-height: 27px;
+    -fx-pref-height: 27px;
+    -fx-padding: 4px 8px;
+    -fx-font-size: 11px;
+    -fx-text-fill: #383838;
+}
+
+.bundle-button {
+    -fx-pref-height: 29px;
+    -fx-padding: 4px 7px;
+}
+
+.navigation-button:disabled,
+.tool-button:disabled,
+.download-button:disabled {
+    -fx-opacity: 0.50;
+}
+
+.work-progress {
+    -fx-pref-height: 8px;
+}

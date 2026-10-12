@@ -9,14 +9,18 @@ import se233.project1.model.ConversionSettings;
 import se233.project1.view.DropZoneView;
 import se233.project1.view.EditorView;
 
+import java.io.File;
+import java.util.List;
+
 /** Main controller that owns the Stage and switches between application screens. */
 public class HelloController {
-    private static final double EDITOR_WIDTH = 1180;
-    private static final double EDITOR_HEIGHT = 720;
+    private static final double EDITOR_WIDTH = 1040;
+    private static final double EDITOR_HEIGHT = 600;
 
     private final Stage stage;
     private final ConversionSettings settings = new ConversionSettings();
     private Stage editorStage;
+    private EditorController editorController;
 
     public HelloController(Stage stage) {
         this.stage = stage;
@@ -30,6 +34,11 @@ public class HelloController {
         if (editorStage != null) {
             Stage stageToClose = editorStage;
             editorStage = null;
+            stageToClose.setOnCloseRequest(null);
+            if (editorController != null) {
+                editorController.close();
+                editorController = null;
+            }
             stage.show();
             stageToClose.close();
         }
@@ -43,20 +52,27 @@ public class HelloController {
         stage.show();
     }
 
-    public void showEditor() {
+    public void showEditor(List<File> files) {
         stage.hide();
         editorStage = new Stage();
-        EditorController editorController = new EditorController();
-        SettingsController settingsController = new SettingsController(settings, this::showDropZone);
+        editorController = new EditorController(settings);
+        SettingsController settingsController = new SettingsController(
+                settings, this::showDropZone, editorController::settingsChanged);
         editorStage.setTitle("Vectorizer");
-        editorStage.setMinWidth(940);
-        editorStage.setMinHeight(600);
+        editorStage.setMinWidth(900);
+        editorStage.setMinHeight(520);
+        EditorView editorView = new EditorView(editorController, settingsController);
         editorStage.setScene(new Scene(
-                new EditorView(editorController, settingsController),
+                editorView,
                 EDITOR_WIDTH,
                 EDITOR_HEIGHT
         ));
+        editorStage.setOnCloseRequest(event -> {
+            if (editorController != null) editorController.close();
+            stage.close();
+        });
         editorStage.centerOnScreen();
         editorStage.show();
+        editorController.loadInputs(files);
     }
 }

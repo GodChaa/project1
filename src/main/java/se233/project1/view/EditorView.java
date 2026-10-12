@@ -2,337 +2,412 @@ package se233.project1.view;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.control.*;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
-import javafx.scene.image.WritableImage;
-import javafx.scene.layout.*;
+import javafx.scene.Node;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBase;
+import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Separator;
+import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Line;
+import javafx.scene.shape.Polygon;
+import javafx.scene.shape.Rectangle;
 import se233.project1.controller.EditorController;
 import se233.project1.controller.SettingsController;
 import se233.project1.model.ConversionSettings;
-import se233.project1.model.ImageProject;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
+import java.net.URL;
+import java.nio.file.Path;
 
-/** JavaFX-only editor mockup based on the supplied Vector Magic reference. */
-public class EditorView extends BorderPane {
-    private static final String BUTTON_STYLE = "-fx-background-color: #f3f4f6; " + "-fx-border-color: #cfd4da; -fx-border-radius: 5; -fx-background-radius: 5;";
-    private final List<Label> previewPlaceholders = new ArrayList<>();
+/** The rebuilt second screen shown after files are dropped. */
+public class EditorView extends BorderPane implements EditorController.View {
     private final EditorController editorController;
-    private StackPane originalCanvas;
-    private Button btnNext;
+    private final SettingsController settingsController;
+    private final CenterPreviewPane previews = new CenterPreviewPane();
+    private final Button download = new Button();
+    private final Button exportBundle = new Button();
+    private final Button previous = new Button();
+    private final Button next = new Button();
+    private final Label colorCountValue = new Label();
+    private final Button colorCountUp = new Button();
+    private final Button colorCountDown = new Button();
+    private final HBox colorCountRow = new HBox();
+    private final ProgressBar progress = new ProgressBar(0);
+    private final Label status = new Label();
+    private final ToggleGroup detailGroup = new ToggleGroup();
+    private final ToggleGroup colorGroup = new ToggleGroup();
+    private final ToggleButton removeBackground = new ToggleButton();
+    private final VBox configurationPanel = new VBox(7);
+    private int currentColorCount;
+    private int maximumColorCount = 5;
+    private boolean hasPreviousImage;
+    private boolean hasNextImage;
+    private boolean editingEnabled = true;
+    private boolean updatingSettings;
+    private boolean hasImages;
 
     public EditorView(EditorController editorController, SettingsController settingsController) {
         this.editorController = editorController;
-        setTop(createToolbar(editorController));
-        setCenter(createPreviewArea());
-        setRight(createSettingsPanel(settingsController));
-        setStyle("-fx-background-color: #ffffff;");
+        this.settingsController = settingsController;
+        editorController.attachView(this);
 
-        // เปิดใช้งานระบบ Drag-and-Drop
-        setupDragAndDrop(editorController);
+        getStyleClass().add("editor-root");
+        setTop(createToolbar());
+        setCenter(previews);
+        setRight(createSettingsPanel());
+
+        URL stylesheet = getClass().getResource("/se233/project1/editor.css");
+        if (stylesheet != null) getStylesheets().add(stylesheet.toExternalForm());
     }
 
-    private void setupDragAndDrop(EditorController controller) {
-        this.setOnDragOver(event -> {
-            if (event.getDragboard().hasFiles()) {
-                event.acceptTransferModes(javafx.scene.input.TransferMode.COPY);
-            }
-            event.consume();
-        });
+    /** Only the three controls required by the PDF appear in the top panel. */
+    private StackPane createToolbar() {
+        Button zoomIn = toolbarButton(magnifierIcon(true), "Zoom In");
+        Button zoomOut = toolbarButton(magnifierIcon(false), "Zoom Out");
+        Button zoomToFit = toolbarButton(fitIcon(), "Zoom to Fit");
+        zoomIn.setOnAction(event -> editorController.zoomIn());
+        zoomOut.setOnAction(event -> editorController.zoomOut());
+        zoomToFit.setOnAction(event -> editorController.zoomToFit());
 
-        this.setOnDragDropped(event -> {
-            javafx.scene.input.Dragboard db = event.getDragboard();
-            boolean success = false;
-            if (db.hasFiles()) {
-                List<File> files = db.getFiles();
-                List<ImageProject> projects = new ArrayList<>();
+        HBox controls = new HBox(3, zoomIn, zoomOut, zoomToFit);
+        controls.setAlignment(Pos.CENTER_LEFT);
+        StackPane.setAlignment(controls, Pos.CENTER_LEFT);
 
-                for (File file : files) {
-                    String name = file.getName().toLowerCase();
-                    if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")) {
-                        projects.add(new ImageProject(file.getAbsolutePath()));
-                    } else if (name.endsWith(".zip")) {
-                        // TODO: รองรับการแตกไฟล์ .zip ตามข้อกำหนด
-                    }
-                }
+        Label title = new Label("Try Vectorizer.AI");
+        title.getStyleClass().add("toolbar-title");
 
-                if (!projects.isEmpty()) {
-                    // ส่งรายการโปรเจกต์ให้ Controller
-                    controller.setProjects(projects);
-
-                    // แสดงภาพแรกบนพรีวิวฝั่งซ้าย (Original Image)
-                    displayOriginalImage(projects.get(0).getFilePath());
-                    success = true;
-                }
-            }
-            event.setDropCompleted(success);
-            event.consume();
-        });
-    }
-
-    public void displayOriginalImage(String imagePath) {
-        if (originalCanvas != null) {
-            try {
-                File file = new File(imagePath);
-                Image image = new Image(file.toURI().toString());
-                ImageView imageView = new ImageView(image);
-                imageView.setPreserveRatio(true);
-                imageView.fitWidthProperty().bind(originalCanvas.widthProperty().subtract(20));
-                imageView.fitHeightProperty().bind(originalCanvas.heightProperty().subtract(20));
-
-                originalCanvas.getChildren().setAll(imageView);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    // Top panel: Zoom controls only
-    private HBox createToolbar(EditorController controller) {
-        Button zoomIn = toolbarButton("＋", "Zoom In");
-        zoomIn.setOnAction(event -> applyZoom(controller.zoomIn()));
-
-        Button zoomOut = toolbarButton("−", "Zoom Out");
-        zoomOut.setOnAction(event -> applyZoom(controller.zoomOut()));
-
-        Button zoomToFit = toolbarButton("⛶", "Zoom to Fit");
-        zoomToFit.setOnAction(event -> applyZoom(controller.zoomToFit()));
-
-        HBox toolbar = new HBox(6, zoomIn, zoomOut, zoomToFit);
-        toolbar.setAlignment(Pos.CENTER_LEFT);
-        toolbar.setPadding(new Insets(7, 12, 7, 12));
-        toolbar.setPrefHeight(46);
-        toolbar.setStyle("-fx-background-color: #f7f8fa; -fx-border-color: #d9dde3; "
-                + "-fx-border-width: 0 0 1 0;");
+        StackPane toolbar = new StackPane(controls, title);
+        toolbar.setPadding(new Insets(3, 6, 3, 6));
+        toolbar.getStyleClass().add("top-toolbar");
         return toolbar;
     }
 
-    private Button toolbarButton(String icon, String text) {
-        Button button = new Button(text.isEmpty() ? icon : icon + "  " + text);
-        button.setStyle(BUTTON_STYLE + " -fx-font-size: 13px;");
+    private Button toolbarButton(Node icon, String description) {
+        Button button = new Button();
+        button.setGraphic(icon);
+        button.setTooltip(new Tooltip(description));
+        button.setAccessibleText(description);
+        button.getStyleClass().add("tool-button");
         return button;
     }
 
-    // Center preview: Side-by-side Original and Vectorized result
-    private GridPane createPreviewArea() {
-        GridPane previews = new GridPane();
-        previews.setHgap(2);
-        previews.setPadding(new Insets(0, 2, 2, 2));
-        previews.setStyle("-fx-background-color: #d7dbe0;");
-
-        ColumnConstraints left = new ColumnConstraints();
-        ColumnConstraints right = new ColumnConstraints();
-        left.setPercentWidth(50);
-        right.setPercentWidth(50);
-        left.setHgrow(Priority.ALWAYS);
-        right.setHgrow(Priority.ALWAYS);
-        previews.getColumnConstraints().addAll(left, right);
-
-        BorderPane original = createOriginalPreview("Original Image", "Drop an image to preview");
-        BorderPane vector = createVectorPreview("Vectorized Result", "Vector preview");
-
-        previews.add(original, 0, 0);
-        previews.add(vector, 1, 0);
-
-        GridPane.setHgrow(original, Priority.ALWAYS);
-        GridPane.setHgrow(vector, Priority.ALWAYS);
-        GridPane.setVgrow(original, Priority.ALWAYS);
-        GridPane.setVgrow(vector, Priority.ALWAYS);
-
-        return previews;
+    private Node magnifierIcon(boolean plus) {
+        Circle lens = new Circle(6.25, 6.25, 4.5);
+        lens.setFill(Color.TRANSPARENT);
+        lens.getStyleClass().add("button-icon-stroke");
+        Line handle = iconLine(9.5, 9.5, 14.5, 14.5);
+        Line horizontal = iconLine(3.9, 6.25, 8.6, 6.25);
+        Pane icon = iconPane(16, 16, lens, handle, horizontal);
+        if (plus) icon.getChildren().add(iconLine(6.25, 3.9, 6.25, 8.6));
+        return icon;
     }
 
-    private BorderPane createOriginalPreview(String title, String placeholderText) {
-        Label heading = new Label(title);
-        heading.setMaxWidth(Double.MAX_VALUE);
-        heading.setAlignment(Pos.CENTER);
-        heading.setPadding(new Insets(8));
-        heading.setStyle("-fx-font-size: 15px; -fx-background-color: rgba(255,255,255,0.88); "
-                + "-fx-border-color: #d4d8dd; -fx-border-width: 0 0 1 0;");
-
-        Label placeholder = new Label(placeholderText);
-        placeholder.setStyle("-fx-font-size: 16px; -fx-text-fill: #8a9098; "
-                + "-fx-background-color: rgba(255,255,255,0.78); -fx-padding: 12 18; "
-                + "-fx-background-radius: 7;");
-        previewPlaceholders.add(placeholder);
-
-        originalCanvas = new StackPane(placeholder);
-        originalCanvas.setBackground(checkerboardBackground());
-
-        Label footer = new Label("900 × 900 px");
-        footer.setMaxWidth(Double.MAX_VALUE);
-        footer.setAlignment(Pos.CENTER);
-        footer.setPadding(new Insets(7));
-        footer.setStyle("-fx-background-color: rgba(255,255,255,0.9); -fx-text-fill: #555b63;");
-
-        BorderPane preview = new BorderPane(originalCanvas, heading, null, footer, null);
-        preview.setMinWidth(0);
-        return preview;
+    private Node fitIcon() {
+        Pane icon = iconPane(16, 16,
+                iconLine(2, 6, 2, 2), iconLine(2, 2, 6, 2),
+                iconLine(10, 2, 14, 2), iconLine(14, 2, 14, 6),
+                iconLine(14, 10, 14, 14), iconLine(14, 14, 10, 14),
+                iconLine(6, 14, 2, 14), iconLine(2, 14, 2, 10));
+        icon.getStyleClass().add("fit-icon");
+        return icon;
     }
 
-    private BorderPane createVectorPreview(String title, String placeholderText) {
-        Label heading = new Label(title);
-        heading.setMaxWidth(Double.MAX_VALUE);
-        heading.setAlignment(Pos.CENTER);
-        heading.setPadding(new Insets(8));
-        heading.setStyle("-fx-font-size: 15px; -fx-background-color: rgba(255,255,255,0.88); "
-                + "-fx-border-color: #d4d8dd; -fx-border-width: 0 0 1 0;");
-
-        Label placeholder = new Label(placeholderText);
-        placeholder.setStyle("-fx-font-size: 16px; -fx-text-fill: #8a9098; "
-                + "-fx-background-color: rgba(255,255,255,0.78); -fx-padding: 12 18; "
-                + "-fx-background-radius: 7;");
-        previewPlaceholders.add(placeholder);
-
-        StackPane canvas = new StackPane(placeholder);
-        canvas.setBackground(checkerboardBackground());
-
-        Label footer = new Label("900 × 900 px");
-        footer.setMaxWidth(Double.MAX_VALUE);
-        footer.setAlignment(Pos.CENTER);
-        footer.setPadding(new Insets(7));
-        footer.setStyle("-fx-background-color: rgba(255,255,255,0.9); -fx-text-fill: #555b63;");
-
-        BorderPane preview = new BorderPane(canvas, heading, null, footer, null);
-        preview.setMinWidth(0);
-        return preview;
+    private Line iconLine(double startX, double startY, double endX, double endY) {
+        Line line = new Line(startX, startY, endX, endY);
+        line.getStyleClass().add("button-icon-stroke");
+        return line;
     }
 
-    private VBox createSettingsPanel(SettingsController controller) {
-        ConversionSettings settings = controller.settings();
+    private Pane iconPane(double width, double height, Node... shapes) {
+        Pane pane = new Pane(shapes);
+        pane.setMinSize(width, height);
+        pane.setPrefSize(width, height);
+        pane.setMaxSize(width, height);
+        return pane;
+    }
 
-        Button export = new Button("↓  Download Result");
-        export.setMaxWidth(Double.MAX_VALUE);
-        export.setPrefHeight(40);
-        export.setStyle("-fx-background-color: #2b73b7; -fx-text-fill: white; "
-                + "-fx-font-size: 14px; -fx-font-weight: bold; -fx-background-radius: 4;");
+    private VBox createSettingsPanel() {
+        ConversionSettings settings = settingsController.settings();
 
-        // เชื่อมโยงปุ่ม Export All กับ EditorController เพื่อเปิด DirectoryChooser
-        export.setOnAction(event -> {
-            javafx.stage.Window window = export.getScene().getWindow();
-            if (editorController != null) {
-                editorController.handleExportAll(window);
-            }
-        });
+        download.setMaxWidth(Double.MAX_VALUE);
+        download.setGraphic(downloadGraphic());
+        download.setAccessibleText("Export All");
+        download.setTooltip(new Tooltip("Save every imported image as an SVG in a folder"));
+        download.setDisable(true);
+        download.getStyleClass().add("download-button");
+        download.setOnAction(event -> editorController.exportAll(download.getScene().getWindow()));
 
-        Label heading = new Label("Improve result");
-        heading.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #222;");
+        exportBundle.setGraphic(labeledGraphic(bundleIcon(), "Export ZIP + report", "segment-text"));
+        exportBundle.setAccessibleText("Export ZIP and report");
+        exportBundle.setTooltip(new Tooltip("Package every SVG with a CSV conversion report for sharing"));
+        exportBundle.setMaxWidth(Double.MAX_VALUE);
+        exportBundle.getStyleClass().add("bundle-button");
+        exportBundle.setDisable(true);
+        exportBundle.setOnAction(event -> editorController.exportZip(exportBundle.getScene().getWindow()));
 
-        HBox detailHeader = new HBox(5, sectionLabel("Detail level"), createInstructionLink());
-        detailHeader.setAlignment(Pos.CENTER_LEFT);
+        Label improveHeading = new Label("Improve result");
+        improveHeading.getStyleClass().add("improve-heading");
 
-        ToggleGroup detailGroup = new ToggleGroup();
         ToggleButton low = segmentButton("Low", detailGroup);
         ToggleButton medium = segmentButton("Medium", detailGroup);
         ToggleButton high = segmentButton("High", detailGroup);
-
-        low.setOnAction(event -> controller.selectDetail(ConversionSettings.DetailLevel.LOW));
-        medium.setOnAction(event -> controller.selectDetail(ConversionSettings.DetailLevel.MEDIUM));
-        high.setOnAction(event -> controller.selectDetail(ConversionSettings.DetailLevel.HIGH));
-
+        low.setUserData(ConversionSettings.DetailLevel.LOW);
+        medium.setUserData(ConversionSettings.DetailLevel.MEDIUM);
+        high.setUserData(ConversionSettings.DetailLevel.HIGH);
         switch (settings.getDetailLevel()) {
             case LOW -> low.setSelected(true);
             case MEDIUM -> medium.setSelected(true);
             case HIGH -> high.setSelected(true);
         }
+        low.setOnAction(event -> keepSelected(low,
+                () -> settingsController.selectDetail(ConversionSettings.DetailLevel.LOW)));
+        medium.setOnAction(event -> keepSelected(medium,
+                () -> settingsController.selectDetail(ConversionSettings.DetailLevel.MEDIUM)));
+        high.setOnAction(event -> keepSelected(high,
+                () -> settingsController.selectDetail(ConversionSettings.DetailLevel.HIGH)));
 
-        HBox colorHeader = new HBox(5, sectionLabel("Colors"), createInstructionLink());
-        colorHeader.setAlignment(Pos.CENTER_LEFT);
+        ToggleButton unlimited = colorSegmentButton("Unlimited", rainbowIcon(), colorGroup);
+        ToggleButton custom = colorSegmentButton("Custom", colorGridIcon(), colorGroup);
+        unlimited.setUserData(ConversionSettings.ColorMode.UNLIMITED);
+        custom.setUserData(ConversionSettings.ColorMode.CUSTOM);
+        boolean customSelected = settings.getColorMode() == ConversionSettings.ColorMode.CUSTOM;
+        custom.setSelected(customSelected);
+        unlimited.setSelected(!customSelected);
 
-        ToggleGroup colorGroup = new ToggleGroup();
-        ToggleButton unlimited = segmentButton(" Unlimited", colorGroup);
-        ToggleButton custom = segmentButton(" Custom", colorGroup);
+        currentColorCount = settings.getCustomColorCount();
+        Node colorCounter = createColorCounter();
+        updateColorCounter();
+        Label colorCountLabel = new Label("Number of colors");
+        colorCountLabel.getStyleClass().add("color-count-label");
+        colorCountRow.getChildren().addAll(colorCountLabel, colorCounter);
+        colorCountRow.setSpacing(7);
+        colorCountRow.setAlignment(Pos.CENTER_LEFT);
+        setColorCountVisible(customSelected);
 
-        Spinner<Integer> colorCount = new Spinner<>(1, 5, 2);
-        colorCount.setMaxWidth(Double.MAX_VALUE);
-        colorCount.getValueFactory().setValue(settings.getCustomColorCount());
-        boolean isCustom = settings.getColorMode() == ConversionSettings.ColorMode.CUSTOM;
-        custom.setSelected(isCustom);
-        unlimited.setSelected(!isCustom);
-        colorCount.setDisable(!isCustom);
+        unlimited.setOnAction(event -> keepSelected(unlimited, () -> {
+            setColorCountVisible(false);
+            settingsController.selectColorMode(ConversionSettings.ColorMode.UNLIMITED);
+        }));
+        custom.setOnAction(event -> keepSelected(custom, () -> {
+            setColorCountVisible(true);
+            settingsController.selectColorMode(ConversionSettings.ColorMode.CUSTOM);
+        }));
 
-        unlimited.setOnAction(event -> {
-            controller.selectColorMode(ConversionSettings.ColorMode.UNLIMITED);
-            colorCount.setDisable(true);
-        });
-        custom.setOnAction(event -> {
-            controller.selectColorMode(ConversionSettings.ColorMode.CUSTOM);
-            colorCount.setDisable(false);
-        });
-        colorCount.valueProperty().addListener((value, oldValue, newValue) ->
-                controller.setCustomColorCount(newValue));
-
-        Label advancedHeading = new Label("Advanced");
-        advancedHeading.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #444;");
-
-        Button editResult = new Button("✏️ Edit Result");
-        editResult.setMaxWidth(Double.MAX_VALUE);
-        editResult.setStyle(BUTTON_STYLE);
-        editResult.setDisable(true);
-
-        CheckBox removeBackground = new CheckBox("Remove Background");
+        removeBackground.setGraphic(backgroundGraphic());
+        removeBackground.setAccessibleText("Remove Background");
         removeBackground.setSelected(settings.isRemoveBackground());
-        removeBackground.selectedProperty().addListener((value, oldValue, selected) ->
-                controller.setRemoveBackground(selected));
         removeBackground.setMaxWidth(Double.MAX_VALUE);
-        removeBackground.setStyle("-fx-padding: 8 10; -fx-background-color: #ffffff; "
-                + "-fx-border-color: #d0d5dd; -fx-border-radius: 4; -fx-background-radius: 4;");
+        removeBackground.getStyleClass().add("background-option");
+        removeBackground.setAccessibleRole(javafx.scene.AccessibleRole.CHECK_BOX);
+        removeBackground.selectedProperty().addListener((observable, oldValue, selected) -> {
+            if (!updatingSettings) settingsController.setRemoveBackground(selected);
+        });
 
-        Button handPick = new Button("⚙️ Hand-pick Settings");
-        handPick.setMaxWidth(Double.MAX_VALUE);
-        handPick.setStyle(BUTTON_STYLE);
-        handPick.setDisable(true);
+        previous.getStyleClass().add("navigation-button");
+        next.getStyleClass().add("navigation-button");
+        previous.setGraphic(navigationGraphic("Back", false));
+        next.setGraphic(navigationGraphic("Next", true));
+        previous.setAccessibleText("Back");
+        next.setAccessibleText("Next");
+        previous.setTooltip(new Tooltip("Previous image, or return to the drop zone"));
+        next.setTooltip(new Tooltip("Next image"));
+        next.setDisable(true);
+        previous.setOnAction(event -> {
+            if (hasPreviousImage) editorController.previous();
+            else settingsController.backToDropZone();
+        });
+        next.setOnAction(event -> editorController.next());
 
-        Button btnBack = new Button("← Back");
-        btnBack.setStyle(BUTTON_STYLE);
-        btnNext = new Button("Next →");
-        btnNext.setStyle(BUTTON_STYLE);
+        progress.setMaxWidth(Double.MAX_VALUE);
+        progress.getStyleClass().add("work-progress");
+        status.setWrapText(true);
+        status.getStyleClass().add("work-status");
+        setWorkStatusVisible(false);
 
         Region spacer = new Region();
-        VBox panel = new VBox(8,
-                export,
-                heading,
-                detailHeader, segmentedRow(low, medium, high),
-                colorHeader, segmentedRow(unlimited, custom), colorCount,
+        configurationPanel.getChildren().addAll(
+                improveHeading,
+                sectionLabel("Detail level"), segmentedRow(low, medium, high),
+                sectionLabel("Colors"), segmentedRow(unlimited, custom), colorCountRow,
                 new Separator(),
-                advancedHeading,
-                editResult,
-                removeBackground,
-                handPick,
+                sectionLabel("Advanced"), removeBackground);
+        VBox panel = new VBox(7,
+                download, exportBundle, configurationPanel,
+                progress, status,
                 spacer,
-                segmentedRow(btnBack, btnNext));
-
+                segmentedRow(previous, next));
         VBox.setVgrow(spacer, Priority.ALWAYS);
-        panel.setPadding(new Insets(12));
-        panel.setPrefWidth(260);
-        panel.setMinWidth(240);
-        panel.setStyle("-fx-background-color: #fcfcfc; -fx-border-color: #d9dde3; "
-                + "-fx-border-width: 0 0 0 1;");
+        panel.setPadding(new Insets(7));
+        panel.getStyleClass().add("settings-panel");
         return panel;
     }
 
-    private Hyperlink createInstructionLink() {
-        Hyperlink link = new Hyperlink("Instructions ↗");
-        link.setStyle("-fx-font-size: 11px; -fx-text-fill: #1a73e8; -fx-padding: 0;");
-        return link;
-    }
-
-    private void applyZoom(double zoom) {
-        for (Label placeholder : previewPlaceholders) {
-            placeholder.setScaleX(zoom);
-            placeholder.setScaleY(zoom);
-        }
-    }
-
     private ToggleButton segmentButton(String text, ToggleGroup group) {
-        ToggleButton button = new ToggleButton(text);
+        ToggleButton button = new ToggleButton();
         button.setToggleGroup(group);
-        button.setStyle(BUTTON_STYLE + " -fx-font-size: 12px;");
+        button.setGraphic(labeledGraphic(null, text, "segment-text"));
+        button.setAccessibleText(text);
+        button.getStyleClass().add("segment-button");
         return button;
+    }
+
+    private ToggleButton colorSegmentButton(String text, Node icon, ToggleGroup group) {
+        ToggleButton button = new ToggleButton();
+        button.setToggleGroup(group);
+        button.setGraphic(labeledGraphic(icon, text, "segment-text"));
+        button.setAccessibleText(text);
+        button.getStyleClass().addAll("segment-button", "color-segment-button");
+        return button;
+    }
+
+    private HBox labeledGraphic(Node icon, String text, String labelStyleClass) {
+        Label label = new Label(text);
+        label.getStyleClass().add(labelStyleClass);
+        HBox content = new HBox(4);
+        if (icon != null) content.getChildren().add(icon);
+        content.getChildren().add(label);
+        content.setAlignment(Pos.CENTER);
+        return content;
+    }
+
+    private Node downloadGraphic() {
+        Rectangle shaft = new Rectangle(6, 1, 4, 9);
+        Polygon head = new Polygon(2.0, 8.0, 14.0, 8.0, 8.0, 14.0);
+        Rectangle base = new Rectangle(2, 15, 12, 2);
+        for (Node part : new Node[]{shaft, head, base}) {
+            part.getStyleClass().add("download-icon");
+        }
+        Pane arrow = iconPane(16, 18, shaft, head, base);
+        HBox content = labeledGraphic(arrow, "Export All", "download-label");
+        content.setSpacing(10);
+        content.setAlignment(Pos.CENTER_LEFT);
+        return content;
+    }
+
+    private Node bundleIcon() {
+        Rectangle box = new Rectangle(1, 2, 14, 13);
+        box.setFill(Color.TRANSPARENT);
+        box.getStyleClass().add("button-icon-stroke");
+        Pane icon = iconPane(16, 17, box, iconLine(1, 5, 15, 5));
+        for (int y = 6; y <= 12; y += 3) {
+            Rectangle tooth = new Rectangle(7, y, 2, 2);
+            tooth.setFill(Color.web("#3d4145"));
+            icon.getChildren().add(tooth);
+        }
+        return icon;
+    }
+
+    private Node navigationGraphic(String text, boolean pointsRight) {
+        double tipX = pointsRight ? 13 : 3;
+        double tailX = pointsRight ? 3 : 13;
+        Line shaft = iconLine(tailX, 8, tipX, 8);
+        Line upper = iconLine(tipX, 8, pointsRight ? 9 : 7, 4);
+        Line lower = iconLine(tipX, 8, pointsRight ? 9 : 7, 12);
+        Pane arrow = iconPane(16, 16, shaft, upper, lower);
+        return labeledGraphic(arrow, text, "navigation-label");
+    }
+
+    private Node backgroundGraphic() {
+        Rectangle box = new Rectangle(1, 1, 13, 13);
+        box.getStyleClass().add("background-box-shape");
+        Line checkStart = iconLine(3.5, 7.5, 6.3, 10.3);
+        Line checkEnd = iconLine(6.3, 10.3, 12, 4.2);
+        checkStart.getStyleClass().add("background-check-mark");
+        checkEnd.getStyleClass().add("background-check-mark");
+        Pane checkBox = iconPane(16, 16, box, checkStart, checkEnd);
+        return labeledGraphic(checkBox, "Remove Background", "background-label");
+    }
+
+    private Node createColorCounter() {
+        colorCountValue.getStyleClass().add("color-counter-value");
+        colorCountValue.setAlignment(Pos.CENTER_LEFT);
+
+        colorCountUp.setGraphic(triangleIcon(true));
+        colorCountDown.setGraphic(triangleIcon(false));
+        colorCountUp.setAccessibleText("Increase number of colors");
+        colorCountDown.setAccessibleText("Decrease number of colors");
+        colorCountUp.getStyleClass().add("counter-button");
+        colorCountDown.getStyleClass().add("counter-button");
+        colorCountUp.setOnAction(event -> setColorCount(currentColorCount + 1));
+        colorCountDown.setOnAction(event -> setColorCount(currentColorCount - 1));
+
+        VBox arrows = new VBox(0, colorCountUp, colorCountDown);
+        arrows.getStyleClass().add("counter-arrows");
+        HBox counter = new HBox(0, colorCountValue, arrows);
+        counter.setAlignment(Pos.CENTER_RIGHT);
+        counter.getStyleClass().add("color-counter");
+        return counter;
+    }
+
+    private Node triangleIcon(boolean pointsUp) {
+        Polygon triangle = pointsUp
+                ? new Polygon(1.0, 5.0, 5.0, 1.0, 9.0, 5.0)
+                : new Polygon(1.0, 1.0, 5.0, 5.0, 9.0, 1.0);
+        triangle.getStyleClass().add("counter-triangle");
+        return iconPane(10, 6, triangle);
+    }
+
+    private void setColorCount(int requestedCount) {
+        int boundedCount = Math.max(1, Math.min(maximumColorCount, requestedCount));
+        if (boundedCount != currentColorCount) {
+            currentColorCount = boundedCount;
+            settingsController.setCustomColorCount(currentColorCount);
+        }
+        updateColorCounter();
+    }
+
+    private void updateColorCounter() {
+        colorCountValue.setText(Integer.toString(currentColorCount));
+        colorCountUp.setDisable(currentColorCount >= maximumColorCount);
+        colorCountDown.setDisable(currentColorCount <= 1);
+    }
+
+    private Node rainbowIcon() {
+        HBox stripes = new HBox(0);
+        Color[] colors = {
+                Color.web("#df3c32"), Color.web("#f19c22"), Color.web("#e8d326"),
+                Color.web("#4fa653"), Color.web("#3d80c5"), Color.web("#7651a8")
+        };
+        for (Color color : colors) {
+            Rectangle stripe = new Rectangle(2, 12, color);
+            stripes.getChildren().add(stripe);
+        }
+        StackPane swatch = new StackPane(stripes);
+        swatch.getStyleClass().add("color-swatch");
+        return swatch;
+    }
+
+    private Node colorGridIcon() {
+        Pane grid = iconPane(12, 12);
+        Color[] colors = {
+                Color.web("#e34b42"), Color.web("#f0c52f"), Color.web("#55a65b"),
+                Color.web("#4389c8"), Color.web("#7a58ae"), Color.web("#e88a34")
+        };
+        for (int index = 0; index < colors.length; index++) {
+            Rectangle cell = new Rectangle((index % 3) * 4, (index / 3) * 6, 4, 6);
+            cell.setFill(colors[index]);
+            grid.getChildren().add(cell);
+        }
+        StackPane swatch = new StackPane(grid);
+        swatch.getStyleClass().add("color-swatch");
+        return swatch;
+    }
+
+    private void keepSelected(ToggleButton selectedButton, Runnable action) {
+        if (!selectedButton.isSelected()) selectedButton.setSelected(true);
+        action.run();
     }
 
     private HBox segmentedRow(ButtonBase... buttons) {
@@ -347,27 +422,106 @@ public class EditorView extends BorderPane {
 
     private Label sectionLabel(String text) {
         Label label = new Label(text);
-        label.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #474c53;");
+        label.getStyleClass().add("section-label");
         return label;
     }
 
-    private Background checkerboardBackground() {
-        int tileSize = 20;
-        WritableImage tile = new WritableImage(tileSize, tileSize);
-        var writer = tile.getPixelWriter();
-        for (int y = 0; y < tileSize; y++) {
-            for (int x = 0; x < tileSize; x++) {
-                boolean alternate = (x < tileSize / 2) != (y < tileSize / 2);
-                writer.setColor(x, y, alternate ? Color.web("#e6e8eb") : Color.WHITE);
-            }
+    private void setColorCountVisible(boolean visible) {
+        colorCountRow.setVisible(visible);
+        colorCountRow.setManaged(visible);
+    }
+
+    private void setWorkStatusVisible(boolean visible) {
+        progress.setVisible(visible);
+        progress.setManaged(visible);
+        status.setVisible(visible);
+        status.setManaged(visible);
+    }
+
+    @Override
+    public void showOriginal(Path path, String name, int position, int total) {
+        hasImages = true;
+        previews.showOriginal(path, name, position, total);
+    }
+
+    @Override
+    public void showVector(Path svgPath, ConversionSettings settings) {
+        previews.showVector(svgPath, settings);
+    }
+
+    @Override
+    public void clearVector(String message) {
+        previews.clearVector(message);
+    }
+
+    @Override
+    public void updateNavigation(boolean canGoBack, boolean canGoNext) {
+        hasPreviousImage = canGoBack;
+        hasNextImage = canGoNext;
+        // Back remains available on the first image so the user can return to the drop zone.
+        previous.setDisable(!editingEnabled);
+        next.setDisable(!editingEnabled || !canGoNext);
+    }
+
+    @Override
+    public void updateColorLimit(int maximum) {
+        maximumColorCount = Math.max(1, Math.min(5, maximum));
+        // The detected limit affects this image's displayed value, not the batch's requested value.
+        currentColorCount = Math.min(settingsController.settings().getCustomColorCount(), maximumColorCount);
+        updateColorCounter();
+    }
+
+    @Override
+    public void showSettings(ConversionSettings settings) {
+        updatingSettings = true;
+        try {
+            detailGroup.getToggles().forEach(toggle -> toggle.setSelected(toggle.getUserData() == settings.getDetailLevel()));
+            colorGroup.getToggles().forEach(toggle -> toggle.setSelected(toggle.getUserData() == settings.getColorMode()));
+            removeBackground.setSelected(settings.isRemoveBackground());
+            currentColorCount = Math.min(settings.getCustomColorCount(), maximumColorCount);
+            updateColorCounter();
+            setColorCountVisible(settings.getColorMode() == ConversionSettings.ColorMode.CUSTOM);
+        } finally {
+            updatingSettings = false;
         }
-        BackgroundImage image = new BackgroundImage(
-                tile, BackgroundRepeat.REPEAT, BackgroundRepeat.REPEAT,
-                BackgroundPosition.DEFAULT,
-                new BackgroundSize(tileSize, tileSize, false, false, false, false));
-        return new Background(
-                java.util.List.of(new BackgroundFill(Color.WHITE, null, null)),
-                java.util.List.of(image)
-        );
+    }
+
+    @Override
+    public void setEditingEnabled(boolean enabled) {
+        editingEnabled = enabled;
+        configurationPanel.setDisable(!enabled);
+        updateNavigation(hasPreviousImage, hasNextImage);
+    }
+
+    @Override
+    public void setWorking(boolean working, double value, String message) {
+        setWorkStatusVisible(working);
+        progress.setProgress(value);
+        status.setText(message);
+        download.setDisable(working || !hasImages);
+        exportBundle.setDisable(working || !hasImages);
+    }
+
+    @Override
+    public void showError(String title, String message) {
+        showAlert(Alert.AlertType.ERROR, title, message);
+    }
+
+    @Override
+    public void showInfo(String title, String message) {
+        showAlert(Alert.AlertType.INFORMATION, title, message);
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(title);
+        alert.setContentText(message);
+        alert.show();
+    }
+
+    @Override
+    public void applyZoom(double zoom) {
+        previews.applyZoom(zoom);
     }
 }

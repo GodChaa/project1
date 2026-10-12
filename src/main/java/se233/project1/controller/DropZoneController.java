@@ -3,28 +3,46 @@ package se233.project1.controller;
 import java.io.File;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 
-/** Handles actions from the initial drag-and-drop screen. */
 public class DropZoneController {
-    private final Runnable showEditor;
+    private final Consumer<List<File>> showEditor;
+    private String validationMessage = "Drop JPG/PNG files, or one ZIP archive.";
 
-    public DropZoneController(Runnable showEditor) {
+    public DropZoneController(Consumer<List<File>> showEditor) {
         this.showEditor = showEditor;
     }
 
     public boolean handleDrop(List<File> files) {
-        boolean hasSupportedFile = files.stream().anyMatch(this::isSupported);
-        if (hasSupportedFile) {
-            showEditor.run();
+        if (files == null || files.isEmpty()) {
+            validationMessage = "No files were selected.";
+            return false;
         }
-        return hasSupportedFile;
+
+        long zipCount = files.stream().filter(this::isZip).count();
+        boolean validImages = files.stream().allMatch(this::isImage);
+        boolean oneZip = files.size() == 1 && zipCount == 1;
+        if (!validImages && !oneZip) {
+            validationMessage = "Choose JPG/PNG images, or a single ZIP archive.";
+            return false;
+        }
+
+        validationMessage = "Loading " + files.size() + " item(s)...";
+        showEditor.accept(List.copyOf(files));
+        return true;
     }
 
-    private boolean isSupported(File file) {
+    public String getValidationMessage() {
+        return validationMessage;
+    }
+
+    private boolean isImage(File file) {
+        if (!file.isFile()) return false;
         String name = file.getName().toLowerCase(Locale.ROOT);
-        return file.isFile() && (name.endsWith(".jpg")
-                || name.endsWith(".jpeg")
-                || name.endsWith(".png")
-                || name.endsWith(".zip"));
+        return name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png");
+    }
+
+    private boolean isZip(File file) {
+        return file.isFile() && file.getName().toLowerCase(Locale.ROOT).endsWith(".zip");
     }
 }
