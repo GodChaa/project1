@@ -9,6 +9,20 @@ import java.util.Optional;
 
 /** Imported image collection and navigation state. */
 public class ImageProject {
+    private String filePath;
+
+    public ImageProject(String filePath) {
+        this.filePath = filePath;
+    }
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
+    }
+
     public record ImageItem(Path sourcePath, Path svgPath) {
         public ImageItem(Path sourcePath) {
             this(sourcePath.toAbsolutePath().normalize(), null);
