@@ -114,6 +114,36 @@ class PotraceConverterTest {
     }
 
     @Test
+    void anEndlesslyVerboseProcessStillTimesOutWithoutWritingDiagnosticFiles() throws Exception {
+        Path script = executable("endless-output.sh", "exit 0", """
+                while :; do
+                  printf 'Repeated diagnostic output from a broken process.\n'
+                done
+                """);
+        Path output = temporaryDirectory.resolve("output.svg");
+        IOException failure = assertTimeoutPreemptively(Duration.ofSeconds(4), () ->
+                assertThrows(IOException.class, () -> converter(script, Duration.ofMillis(300))
+                        .trace(temporaryDirectory.resolve("input.pgm"), output,
+                                ConversionSettings.DetailLevel.MEDIUM)));
+
+        assertTrue(failure.getMessage().contains("timed out"));
+        assertFalse(Files.exists(output));
+        assertScratchWasRemoved();
+    }
+
+    @Test
+    void missingExecutableExplainsHowToInstallOrConfigurePotrace() {
+        PotraceConverter converter = new PotraceConverter(
+                List.of(temporaryDirectory.resolve("missing-potrace").toString()),
+                Duration.ofSeconds(1), Duration.ofSeconds(1));
+
+        IOException failure = assertThrows(IOException.class, converter::requireExecutable);
+        assertTrue(failure.getMessage().contains("brew install potrace"));
+        assertTrue(failure.getMessage().contains("POTRACE_PATH"));
+        assertFalse(converter.isAvailable());
+    }
+
+    @Test
     void timesOutAndTerminatesAHungVersionProbe() throws Exception {
         Path pid = temporaryDirectory.resolve("probe.pid");
         Path childPid = temporaryDirectory.resolve("probe-child.pid");

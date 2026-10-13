@@ -19,12 +19,18 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
-
-/** Imports regular image files and safely extracts image entries from ZIP archives. */
 public class InputImporter implements AutoCloseable {
     private final Object lifecycleLock = new Object();
     private final Set<Path> temporaryDirectories = new HashSet<>();
+    private final Path temporaryRoot;
     private volatile boolean closed;
+
+    public InputImporter() {
+        this(null);
+    }
+    InputImporter(Path temporaryRoot) {
+        this.temporaryRoot = temporaryRoot;
+    }
 
     public List<ImageProject> importFiles(List<File> files) throws IOException {
         checkAvailable();
@@ -61,7 +67,9 @@ public class InputImporter implements AutoCloseable {
         Path directory;
         synchronized (lifecycleLock) {
             checkAvailable();
-            directory = Files.createTempDirectory("vectorizer-import-");
+            directory = temporaryRoot == null
+                    ? Files.createTempDirectory("vectorizer-import-")
+                    : Files.createTempDirectory(temporaryRoot, "vectorizer-import-");
             temporaryDirectories.add(directory);
         }
 
@@ -77,7 +85,6 @@ public class InputImporter implements AutoCloseable {
                     continue;
                 }
                 String displayName = normalizedName.substring(normalizedName.lastIndexOf('/') + 1);
-                // Entry paths never become destination paths, including ../ and absolute paths.
                 Path target = Files.createTempFile(directory, "image-", extension(displayName));
                 try (InputStream input = zip.getInputStream(entry);
                      OutputStream output = Files.newOutputStream(target)) {
@@ -180,11 +187,9 @@ public class InputImporter implements AutoCloseable {
                 try {
                     Files.deleteIfExists(path);
                 } catch (IOException ignored) {
-                    // An in-flight import retries cleanup in its finally block.
                 }
             });
         } catch (IOException ignored) {
-            // Cleanup is best effort; it must never prevent closing the editor.
         }
     }
 }

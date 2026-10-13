@@ -25,8 +25,6 @@ import javafx.scene.web.WebView;
 import se233.project1.model.ConversionSettings;
 
 import java.nio.file.Path;
-
-/** Side-by-side original and traced previews used by the second screen. */
 public class CenterPreviewPane extends GridPane {
     private final ImageView originalImage = new ImageView();
     private final WebView vectorWebView = new WebView();
@@ -75,11 +73,24 @@ public class CenterPreviewPane extends GridPane {
     }
 
     public void showOriginal(Path path, String name, int position, int total) {
-        Image image = new Image(path.toUri().toString(), false);
+        Image previousImage = originalImage.getImage();
+        if (previousImage != null && previousImage.getProgress() < 1) previousImage.cancel();
+        Image image = new Image(path.toUri().toString(), true);
         originalImage.setImage(image);
         String navigation = total > 1 ? "  •  " + position + " / " + total : "";
-        originalFooter.setText(name + " (" + (int) image.getWidth() + " × "
-                + (int) image.getHeight() + " px)" + navigation);
+        originalFooter.setText(name + " — loading..." + navigation);
+        Runnable updateFooter = () -> {
+            if (originalImage.getImage() != image) return;
+            if (image.isError()) {
+                originalFooter.setText(name + " — could not load preview" + navigation);
+            } else if (image.getProgress() >= 1) {
+                originalFooter.setText(name + " (" + (int) image.getWidth() + " × "
+                        + (int) image.getHeight() + " px)" + navigation);
+            }
+        };
+        image.progressProperty().addListener((observable, before, after) -> updateFooter.run());
+        image.errorProperty().addListener((observable, before, after) -> updateFooter.run());
+        updateFooter.run();
     }
 
     public void showVector(Path svgPath, ConversionSettings settings) {
@@ -94,6 +105,7 @@ public class CenterPreviewPane extends GridPane {
     }
 
     public void clearVector(String message) {
+        vectorWebView.getEngine().getLoadWorker().cancel();
         Label placeholder = new Label(message);
         placeholder.getStyleClass().add("preview-placeholder");
         vectorCanvas.getChildren().setAll(placeholder);
@@ -110,8 +122,6 @@ public class CenterPreviewPane extends GridPane {
     }
 
     private void fitVectorToViewport() {
-        // Potrace writes pixel dimensions on the root SVG. Override only the preview's
-        // dimensions; its viewBox keeps the artwork's aspect ratio intact.
         String scale = Double.toString(zoom);
         vectorWebView.getEngine().executeScript("var svg = document.documentElement;"
                 + "svg.setAttribute('width', '100%');"

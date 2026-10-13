@@ -1,8 +1,6 @@
 package se233.project1.controller;
 
 import se233.project1.model.ConversionSettings;
-
-/** Updates the settings model from the right-side panel. */
 public class SettingsController {
     private final ConversionSettings settings;
     private final Runnable showDropZone;

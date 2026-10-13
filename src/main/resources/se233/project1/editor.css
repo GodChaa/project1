@@ -42,6 +42,7 @@
 
 .tool-button:hover,
 .navigation-button:hover,
+.bundle-button:hover,
 .segment-button:hover,
 .background-option:hover {
     -fx-background-color: linear-gradient(to bottom, #ffffff 0%, #eef4f9 45%, #d7e2eb 100%);
@@ -50,6 +51,7 @@
 
 .tool-button:pressed,
 .navigation-button:pressed,
+.bundle-button:pressed,
 .segment-button:pressed,
 .background-option:pressed {
     -fx-background-color: linear-gradient(to bottom, #d4d4d4 0%, #eeeeee 100%);
@@ -282,6 +284,7 @@
 }
 
 .navigation-button:disabled,
+.bundle-button:disabled,
 .tool-button:disabled,
 .download-button:disabled {
     -fx-opacity: 0.50;

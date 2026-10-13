@@ -30,8 +30,6 @@ import se233.project1.model.ConversionSettings;
 
 import java.net.URL;
 import java.nio.file.Path;
-
-/** The rebuilt second screen shown after files are dropped. */
 public class EditorView extends BorderPane implements EditorController.View {
     private final EditorController editorController;
     private final SettingsController settingsController;
@@ -71,8 +69,6 @@ public class EditorView extends BorderPane implements EditorController.View {
         URL stylesheet = getClass().getResource("/se233/project1/editor.css");
         if (stylesheet != null) getStylesheets().add(stylesheet.toExternalForm());
     }
-
-    /** Only the three controls required by the PDF appear in the top panel. */
     private StackPane createToolbar() {
         Button zoomIn = toolbarButton(magnifierIcon(true), "Zoom In");
         Button zoomOut = toolbarButton(magnifierIcon(false), "Zoom Out");
@@ -85,7 +81,7 @@ public class EditorView extends BorderPane implements EditorController.View {
         controls.setAlignment(Pos.CENTER_LEFT);
         StackPane.setAlignment(controls, Pos.CENTER_LEFT);
 
-        Label title = new Label("Try Vectorizer.AI");
+        Label title = new Label("");
         title.getStyleClass().add("toolbar-title");
 
         StackPane toolbar = new StackPane(controls, title);
@@ -458,7 +454,6 @@ public class EditorView extends BorderPane implements EditorController.View {
     public void updateNavigation(boolean canGoBack, boolean canGoNext) {
         hasPreviousImage = canGoBack;
         hasNextImage = canGoNext;
-        // Back remains available on the first image so the user can return to the drop zone.
         previous.setDisable(!editingEnabled);
         next.setDisable(!editingEnabled || !canGoNext);
     }
@@ -466,7 +461,6 @@ public class EditorView extends BorderPane implements EditorController.View {
     @Override
     public void updateColorLimit(int maximum) {
         maximumColorCount = Math.max(1, Math.min(5, maximum));
-        // The detected limit affects this image's displayed value, not the batch's requested value.
         currentColorCount = Math.min(settingsController.settings().getCustomColorCount(), maximumColorCount);
         updateColorCounter();
     }

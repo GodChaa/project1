@@ -5,12 +5,13 @@ import javafx.concurrent.Worker;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Labeled;
+import javafx.scene.control.ToggleButton;
 import javafx.scene.web.WebView;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import se233.project1.controller.EditorController;
+import se233.project1.FxTestSupport;
 import se233.project1.controller.SettingsController;
 import se233.project1.model.ConversionSettings;
 
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -30,14 +32,7 @@ class EditorViewTest {
 
     @BeforeAll
     static void startJavaFx() throws Exception {
-        CompletableFuture<Void> started = new CompletableFuture<>();
-        Platform.startup(() -> started.complete(null));
-        started.get(10, TimeUnit.SECONDS);
-    }
-
-    @AfterAll
-    static void stopJavaFx() {
-        Platform.exit();
+        FxTestSupport.start();
     }
 
     @Test
@@ -48,8 +43,9 @@ class EditorViewTest {
             EditorController editorController = new EditorController(settings);
             try {
                 AtomicBoolean returnedToDropZone = new AtomicBoolean();
+                AtomicInteger settingChanges = new AtomicInteger();
                 SettingsController settingsController = new SettingsController(
-                        settings, () -> returnedToDropZone.set(true), () -> { });
+                        settings, () -> returnedToDropZone.set(true), settingChanges::incrementAndGet);
                 EditorView view = new EditorView(editorController, settingsController);
                 new Scene(view, 1040, 600);
                 view.applyCss();
@@ -80,6 +76,23 @@ class EditorViewTest {
                 view.lookupAll(".tool-button").stream()
                         .map(node -> (Button) node)
                         .forEach(Button::fire);
+
+                toggle(view, "High").fire();
+                assertEquals(ConversionSettings.DetailLevel.HIGH, settings.getDetailLevel());
+                toggle(view, "Unlimited").fire();
+                assertEquals(ConversionSettings.ColorMode.UNLIMITED, settings.getColorMode());
+                toggle(view, "Custom").fire();
+                assertEquals(ConversionSettings.ColorMode.CUSTOM, settings.getColorMode());
+                toggle(view, "Remove Background").fire();
+                assertTrue(settings.isRemoveBackground());
+                assertEquals(4, settingChanges.get());
+                view.updateColorLimit(1);
+                assertEquals(2, settings.getCustomColorCount());
+                assertEquals("1", ((Labeled) view.lookup(".color-counter-value")).getText());
+                view.updateColorLimit(5);
+                assertEquals("2", ((Labeled) view.lookup(".color-counter-value")).getText());
+                view.showSettings(new ConversionSettings());
+                assertEquals(4, settingChanges.get(), "Synchronizing controls must not start conversions");
                 checked.complete(null);
             } catch (Throwable throwable) {
                 checked.completeExceptionally(throwable);
@@ -148,6 +161,13 @@ class EditorViewTest {
                 .filter(button -> accessibleText.equals(button.getAccessibleText()))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private ToggleButton toggle(EditorView view, String accessibleText) {
+        return view.lookupAll(".toggle-button").stream()
+                .map(ToggleButton.class::cast)
+                .filter(button -> accessibleText.equals(button.getAccessibleText()))
+                .findFirst().orElseThrow();
     }
 
     private boolean hasLabeledText(EditorView view, String text) {

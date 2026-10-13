@@ -11,8 +11,6 @@ import se233.project1.view.EditorView;
 
 import java.io.File;
 import java.util.List;
-
-/** Main controller that owns the Stage and switches between application screens. */
 public class HelloController {
     private static final double EDITOR_WIDTH = 1040;
     private static final double EDITOR_HEIGHT = 600;

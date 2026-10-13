@@ -1,8 +1,10 @@
 package se233.project1.model;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -11,8 +13,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-
-/** Safe adapter around the native Potrace command-line program. */
 public class PotraceConverter {
     private static final int MAX_DIAGNOSTIC_BYTES = 8_192;
     private final List<String> configuredCandidates;
@@ -23,8 +23,6 @@ public class PotraceConverter {
     public PotraceConverter() {
         this(null, Duration.ofMinutes(2), Duration.ofSeconds(5));
     }
-
-    /** Allows deterministic process tests without changing global properties or the installed binary. */
     PotraceConverter(List<String> candidates, Duration traceTimeout, Duration probeTimeout) {
         if (traceTimeout.isZero() || traceTimeout.isNegative()
                 || probeTimeout.isZero() || probeTimeout.isNegative()) {
@@ -40,9 +38,9 @@ public class PotraceConverter {
         checkInterrupted();
         String command = requireExecutable();
         TraceOptions options = TraceOptions.forDetail(detail);
-        Path scratchDirectory = Files.createTempDirectory("potrace-");
+        Path absoluteOutput = svgOutput.toAbsolutePath();
+        Path scratchDirectory = Files.createTempDirectory(absoluteOutput.getParent(), ".potrace-");
         Path stagedOutput = scratchDirectory.resolve("result.svg");
-        Path diagnostics = scratchDirectory.resolve("diagnostics.log");
         List<String> arguments = List.of(
                 command,
                 "--svg",
@@ -55,19 +53,23 @@ public class PotraceConverter {
                 bitmapInput.toAbsolutePath().toString()
         );
         try {
-            int exitCode = runProcess(arguments, traceTimeout, diagnostics);
-            if (exitCode != 0) {
-                throw new IOException("Potrace failed with exit code " + exitCode + ": "
-                        + readDiagnostics(diagnostics));
+            ProcessResult result = runProcess(arguments, traceTimeout);
+            if (result.exitCode() != 0) {
+                throw new IOException("Potrace failed with exit code " + result.exitCode() + ": "
+                        + result.diagnostics());
             }
             if (!Files.isRegularFile(stagedOutput) || Files.size(stagedOutput) == 0) {
-                throw new IOException("Potrace did not produce an SVG file: " + readDiagnostics(diagnostics));
+                throw new IOException("Potrace did not produce an SVG file: " + result.diagnostics());
             }
             checkInterrupted();
-            Files.move(stagedOutput, svgOutput, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(stagedOutput, absoluteOutput,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException exception) {
+                Files.move(stagedOutput, absoluteOutput, StandardCopyOption.REPLACE_EXISTING);
+            }
         } finally {
             deleteQuietly(stagedOutput);
-            deleteQuietly(diagnostics);
             deleteQuietly(scratchDirectory);
         }
     }
@@ -115,46 +117,56 @@ public class PotraceConverter {
     }
 
     private boolean works(String candidate) throws IOException {
-        Path diagnostics = null;
         try {
             if (candidate.contains("/") && !Files.isExecutable(Path.of(candidate))) return false;
-            diagnostics = Files.createTempFile("potrace-version-", ".log");
-            return runProcess(List.of(candidate, "--version"), probeTimeout, diagnostics) == 0;
+            return runProcess(List.of(candidate, "--version"), probeTimeout).exitCode() == 0;
         } catch (InvalidPathException exception) {
             return false;
         } catch (IOException exception) {
-            // Cancellation must stop discovery rather than trying every remaining executable.
             if (Thread.currentThread().isInterrupted()) throw exception;
             return false;
-        } finally {
-            deleteQuietly(diagnostics);
         }
     }
 
-    private int runProcess(List<String> arguments, Duration timeout, Path diagnostics) throws IOException {
+    private ProcessResult runProcess(List<String> arguments, Duration timeout) throws IOException {
         checkInterrupted();
         Process process = new ProcessBuilder(arguments)
                 .redirectErrorStream(true)
-                // A file cannot fill the OS pipe buffer and block Potrace before waitFor returns.
-                .redirectOutput(diagnostics.toFile())
                 .start();
+        DiagnosticBuffer diagnostics = new DiagnosticBuffer();
+        Thread reader = Thread.ofPlatform().daemon().name("potrace-diagnostics").start(() -> {
+            try (InputStream input = process.getInputStream()) {
+                byte[] buffer = new byte[8_192];
+                int count;
+                while ((count = input.read(buffer)) != -1) diagnostics.append(buffer, count);
+            } catch (IOException ignored) {
+            }
+        });
         try {
             process.getOutputStream().close();
             if (!process.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
                 throw new IOException("Potrace timed out after " + timeout.toMillis() + " ms.");
             }
-            return process.exitValue();
+            reader.join(1_000);
+            return new ProcessResult(process.exitValue(), diagnostics.message());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IOException("Potrace was interrupted.", exception);
         } finally {
             terminateProcess(process);
+            boolean interrupted = Thread.interrupted();
+            try {
+                reader.join(1_000);
+            } catch (InterruptedException exception) {
+                interrupted = true;
+            } finally {
+                if (interrupted) Thread.currentThread().interrupt();
+            }
         }
     }
 
     private void terminateProcess(Process process) {
         if (process.isAlive()) {
-            // Stop children before their parent so a cancelled wrapper cannot leave native work running.
             process.descendants().forEach(ProcessHandle::destroyForcibly);
             process.destroyForcibly();
             boolean interrupted = Thread.interrupted();
@@ -171,15 +183,24 @@ public class PotraceConverter {
         try { process.getOutputStream().close(); } catch (IOException ignored) { }
     }
 
-    private String readDiagnostics(Path diagnostics) throws IOException {
-        try (InputStream input = Files.newInputStream(diagnostics)) {
-            byte[] bytes = input.readNBytes(MAX_DIAGNOSTIC_BYTES + 1);
-            String result = new String(bytes, 0, Math.min(bytes.length, MAX_DIAGNOSTIC_BYTES),
+    private static final class DiagnosticBuffer {
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream(MAX_DIAGNOSTIC_BYTES + 1);
+
+        synchronized void append(byte[] buffer, int count) {
+            int remaining = MAX_DIAGNOSTIC_BYTES + 1 - bytes.size();
+            if (remaining > 0) bytes.write(buffer, 0, Math.min(count, remaining));
+        }
+
+        synchronized String message() {
+            byte[] prefix = bytes.toByteArray();
+            String result = new String(prefix, 0, Math.min(prefix.length, MAX_DIAGNOSTIC_BYTES),
                     StandardCharsets.UTF_8).trim();
-            if (bytes.length > MAX_DIAGNOSTIC_BYTES) result += " [diagnostic output truncated]";
+            if (prefix.length > MAX_DIAGNOSTIC_BYTES) result += " [diagnostic output truncated]";
             return result.isBlank() ? "No diagnostic output was provided." : result;
         }
     }
+
+    private record ProcessResult(int exitCode, String diagnostics) { }
 
     private void checkInterrupted() throws IOException {
         if (Thread.currentThread().isInterrupted()) throw new IOException("Potrace was interrupted.");

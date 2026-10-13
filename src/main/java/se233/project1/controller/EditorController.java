@@ -17,14 +17,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Owns one cancellable operation at a time; all UI changes happen on the FX thread. */
 public class EditorController implements AutoCloseable {
     private static final double ZOOM_STEP = 0.15;
 
@@ -54,6 +55,7 @@ public class EditorController implements AutoCloseable {
     });
     private final AtomicLong generation = new AtomicLong();
     private final List<Path> temporaryPreviews = new ArrayList<>();
+    private final Map<ImageProject, ConversionSettings> projectSettings = new HashMap<>();
     private List<ImageProject> projects = List.of();
     private int currentIndex;
     private double zoom = 1.0;
@@ -61,6 +63,7 @@ public class EditorController implements AutoCloseable {
     private View view;
     private Path previewDirectory;
     private Future<?> activeTask;
+    private CompletableFuture<?> activeCompletion;
     private Operation operation = Operation.IDLE;
 
     public EditorController(ConversionSettings settings) {
@@ -81,6 +84,7 @@ public class EditorController implements AutoCloseable {
         if (closed || view == null) return;
         List<File> inputs = List.copyOf(files);
         settings.reset();
+        projectSettings.clear();
         projects = List.of();
         currentIndex = 0;
         view.showSettings(settings.copy());
@@ -97,6 +101,7 @@ public class EditorController implements AutoCloseable {
                 temporaryPreviews.add(directory);
                 post(request, () -> {
                     projects = imported;
+                    imported.forEach(project -> projectSettings.put(project, defaults.copy()));
                     currentIndex = 0;
                     previewDirectory = directory;
                     operation = Operation.PREPROCESS;
@@ -129,6 +134,7 @@ public class EditorController implements AutoCloseable {
 
     public void previous() {
         if (canNavigate() && currentIndex > 0) {
+            saveCurrentSettings();
             currentIndex--;
             selectCurrentProject();
         }
@@ -136,6 +142,7 @@ public class EditorController implements AutoCloseable {
 
     public void next() {
         if (canNavigate() && currentIndex < projects.size() - 1) {
+            saveCurrentSettings();
             currentIndex++;
             selectCurrentProject();
         }
@@ -143,6 +150,7 @@ public class EditorController implements AutoCloseable {
 
     public void settingsChanged() {
         if (!canNavigate() || projects.isEmpty()) return;
+        saveCurrentSettings();
         generateCurrentPreview();
     }
 
@@ -191,8 +199,6 @@ public class EditorController implements AutoCloseable {
             });
         }
     }
-
-    /** Also used by integration tests to exercise exactly the same export as the UI. */
     public CompletableFuture<List<BatchConverter.Result>> exportToDirectory(Path directory) {
         return startExport(directory, false);
     }
@@ -206,10 +212,17 @@ public class EditorController implements AutoCloseable {
             return CompletableFuture.failedFuture(new IllegalStateException("No images are ready for export."));
         }
         List<ImageProject> selection = List.copyOf(projects);
+        Map<ImageProject, ConversionSettings> exportSettings = new HashMap<>();
+        for (ImageProject project : selection) {
+            ConversionSettings selected = project == projects.get(currentIndex)
+                    ? settings : projectSettings.getOrDefault(project, settings);
+            exportSettings.put(project, selected.copy());
+        }
         ConversionSettings snapshot = settings.copy();
         long request = begin(Operation.EXPORT, zip ? "Preparing SVG bundle..." : "Exporting SVG files...");
         view.setEditingEnabled(false);
         CompletableFuture<List<BatchConverter.Result>> completed = new CompletableFuture<>();
+        activeCompletion = completed;
         activeTask = coordinator.submit(() -> {
             try {
                 java.util.function.Consumer<BatchConverter.Progress> progress = value -> post(request, () ->
@@ -217,8 +230,8 @@ public class EditorController implements AutoCloseable {
                                 progressText(zip ? "Preparing bundle" : "Exporting", value.completed(),
                                         value.total(), value.parallel())));
                 List<BatchConverter.Result> results = zip
-                        ? batchConverter.exportZip(selection, snapshot, destination, progress)
-                        : batchConverter.convert(selection, snapshot, destination, progress);
+                        ? batchConverter.exportZip(selection, exportSettings::get, destination, progress)
+                        : batchConverter.convert(selection, exportSettings::get, destination, progress);
                 post(request, () -> {
                     finish("Export complete");
                     if (!reportFailures("Export incomplete", results)) {
@@ -255,6 +268,8 @@ public class EditorController implements AutoCloseable {
     private void selectCurrentProject() {
         if (projects.isEmpty()) return;
         ImageProject project = projects.get(currentIndex);
+        ConversionSettings projectConfiguration = projectSettings.get(project);
+        if (projectConfiguration != null) settings.copyFrom(projectConfiguration);
         zoomToFit();
         view.showOriginal(project.getSourcePath(), project.getDisplayName(), currentIndex + 1, projects.size());
         view.updateNavigation(currentIndex > 0, currentIndex < projects.size() - 1);
@@ -271,6 +286,12 @@ public class EditorController implements AutoCloseable {
         } else {
             view.clearVector("Generating preview...");
             if (operation != Operation.PREPROCESS) generateCurrentPreview();
+        }
+    }
+
+    private void saveCurrentSettings() {
+        if (!projects.isEmpty() && currentIndex >= 0 && currentIndex < projects.size()) {
+            projectSettings.put(projects.get(currentIndex), settings.copy());
         }
     }
 
@@ -321,7 +342,9 @@ public class EditorController implements AutoCloseable {
         }
         if (!projects.isEmpty() && projects.get(currentIndex) == result.project()) {
             view.updateColorLimit(result.colorLimit());
-            if (result.failure() == null && effectiveSettings(result.project()).signature().equals(result.settings().signature())) {
+            if (result.failure() != null) {
+                view.clearVector("Preview failed");
+            } else if (effectiveSettings(result.project()).signature().equals(result.settings().signature())) {
                 view.showVector(result.output(), result.settings());
             }
         }
@@ -338,11 +361,14 @@ public class EditorController implements AutoCloseable {
         generation.incrementAndGet();
         if (activeTask != null) activeTask.cancel(true);
         activeTask = null;
+        if (activeCompletion != null) activeCompletion.cancel(false);
+        activeCompletion = null;
     }
 
     private void finish(String message) {
         operation = Operation.IDLE;
         activeTask = null;
+        activeCompletion = null;
         view.setEditingEnabled(true);
         view.setWorking(false, 1, message);
     }
@@ -378,7 +404,9 @@ public class EditorController implements AutoCloseable {
 
     private String rootMessage(Throwable throwable) {
         Throwable current = throwable;
-        while (current.getCause() != null) current = current.getCause();
+        while ((current.getMessage() == null || current.getMessage().isBlank()) && current.getCause() != null) {
+            current = current.getCause();
+        }
         return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
     }
 
@@ -387,7 +415,6 @@ public class EditorController implements AutoCloseable {
             try {
                 if (Desktop.isDesktopSupported()) Desktop.getDesktop().open(directory.toFile());
             } catch (IOException | UnsupportedOperationException ignored) {
-                // The completion dialog includes the exact path if Finder cannot be opened.
             }
         });
     }
@@ -397,7 +424,6 @@ public class EditorController implements AutoCloseable {
         if (closed) return;
         closed = true;
         invalidateActiveTask();
-        // Cleanup runs only after cancelled workers have released their source/output files.
         coordinator.submit(() -> {
             importer.close();
             for (Path directory : temporaryPreviews) {

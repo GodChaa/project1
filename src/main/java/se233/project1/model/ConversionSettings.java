@@ -1,6 +1,4 @@
 package se233.project1.model;
-
-/** All editor options in one model class. */
 public class ConversionSettings {
     public enum DetailLevel { LOW, MEDIUM, HIGH }
     public enum ColorMode { UNLIMITED, CUSTOM }
@@ -59,6 +57,13 @@ public class ConversionSettings {
         copy.customColorCount = customColorCount;
         copy.removeBackground = removeBackground;
         return copy;
+    }
+
+    public void copyFrom(ConversionSettings source) {
+        detailLevel = source.detailLevel;
+        colorMode = source.colorMode;
+        customColorCount = source.customColorCount;
+        removeBackground = source.removeBackground;
     }
 
     public String signature() {

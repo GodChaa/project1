@@ -9,7 +9,6 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import se233.project1.controller.DropZoneController;
 
-/** Drop-zone screen matching the project1prototype design. */
 public class DropZoneView extends StackPane {
     private static final String BACKGROUND = "#f2e9e9";
 

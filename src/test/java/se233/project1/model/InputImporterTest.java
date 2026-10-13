@@ -6,12 +6,14 @@ import org.junit.jupiter.api.io.TempDir;
 import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -151,6 +153,83 @@ class InputImporterTest {
         assertThrows(IOException.class, () -> importer.importFiles(List.of(temporaryDirectory.toFile())));
         importer.close();
         assertThrows(IOException.class, () -> importer.importFiles(List.of(png.toFile())));
+    }
+
+    @Test
+    void failedArchiveImmediatelyCleansEarlierExtractedImages() throws Exception {
+        Path source = createPng("source.png", Color.RED);
+        Path archive = temporaryDirectory.resolve("partially-valid.zip");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(archive))) {
+            add(zip, source, "valid.png");
+            addBytes(zip, "broken.png", new byte[]{1, 2, 3});
+        }
+        Path imports = Files.createDirectory(temporaryDirectory.resolve("imports"));
+        try (InputImporter importer = new InputImporter(imports)) {
+            assertThrows(IOException.class, () -> importer.importFiles(List.of(archive.toFile())));
+            try (var paths = Files.list(imports)) {
+                assertEquals(0, paths.count(), "Failure must clean up without waiting for editor closure.");
+            }
+            assertEquals(1, importer.importFiles(List.of(source.toFile())).size());
+        }
+    }
+
+    @Test
+    void closingDuringExtractionCancelsImportAndRemovesTemporaryFiles() throws Exception {
+        Path source = createPng("source.png", Color.BLUE);
+        byte[] png = Files.readAllBytes(source);
+        Path archive = temporaryDirectory.resolve("many-images.zip");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(archive))) {
+            for (int index = 0; index < 1_000; index++) addBytes(zip, index + ".png", png);
+        }
+        Path imports = Files.createDirectory(temporaryDirectory.resolve("imports"));
+        InputImporter importer = new InputImporter(imports);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread worker = new Thread(() -> {
+            try {
+                importer.importFiles(List.of(archive.toFile()));
+            } catch (Throwable exception) {
+                failure.set(exception);
+            }
+        });
+        worker.start();
+        try {
+            assertTimeoutPreemptively(Duration.ofSeconds(3), () -> {
+                while (true) {
+                    try (var paths = Files.list(imports)) {
+                        if (paths.findAny().isPresent()) break;
+                    }
+                    Thread.sleep(1);
+                }
+            });
+            importer.close();
+            worker.join(3_000);
+            assertFalse(worker.isAlive());
+            assertInstanceOf(IOException.class, failure.get());
+            try (var paths = Files.list(imports)) {
+                assertEquals(0, paths.count());
+            }
+            assertTrue(Files.exists(source));
+            assertTrue(Files.exists(archive));
+        } finally {
+            importer.close();
+            worker.interrupt();
+            worker.join(3_000);
+        }
+    }
+
+    @Test
+    void respectsAnAlreadyInterruptedImportWithoutClearingItsFlag() throws Exception {
+        Path image = createPng("image.png", Color.RED);
+        try (InputImporter importer = new InputImporter()) {
+            Thread.currentThread().interrupt();
+            try {
+                assertThrows(InterruptedIOException.class,
+                        () -> importer.importFiles(List.of(image.toFile())));
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                Thread.interrupted();
+            }
+        }
     }
 
     private Path createPng(String name, Color color) throws Exception {
